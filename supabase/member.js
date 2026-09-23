@@ -1,4 +1,4 @@
-import {invitePanel} from './member-invites.js?v=1';
+import {invitePanel} from './member-invites.js?v=2';
 import {applyTheme} from './themes.js';
 import {supabaseConfig as config} from './supabase-config.js';
 import {esc,field,date,position} from './ui.js';

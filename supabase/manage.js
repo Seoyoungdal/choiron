@@ -1,5 +1,5 @@
 import {partField,bindParts} from './part-field.js?v=1';
-import {invitePanel} from './member-invites.js?v=1';
+import {invitePanel} from './member-invites.js?v=2';
 import {esc,field,date,position} from './ui.js';
 export async function manage({root,rpc,workspace,back}){
  bindParts(root);
