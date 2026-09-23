@@ -1,6 +1,6 @@
 import {appearance} from './appearance.js';
 import {applyTheme} from './themes.js';
-import {manage} from './manage.js';
+import {manage} from './manage.js?v=8';
 import {supabaseConfig as config} from './supabase-config.js';
 const screen=document.querySelector('#screen'),message=document.querySelector('#message');
 let accessToken='',busy=false,requestId='',myWorkspaces=[],isOperator=false;
@@ -29,7 +29,7 @@ function setup(){
  requestId=crypto.randomUUID();message.textContent='';
  screen.innerHTML=`<section class="card"><h2>우리 Workspace 시작하기</h2><p>Google 설정이나 별도 파일 연결 없이 한 번에 만듭니다.</p><form id="create-workspace"><label class="field">교회·단체 이름<input name="workspace" placeholder="예: 신광교회" maxlength="80" required></label><label class="field">관리자 이름<input name="admin" placeholder="본인 이름" maxlength="80" required></label><label class="field">관리자 아이디<input name="loginId" placeholder="한글 이름도 가능합니다" maxlength="64" required></label><p class="muted">한글·영문·숫자·밑줄·붙임표를 띄어쓰기 없이 입력하세요. 지금은 기존 이메일·비밀번호로 로그인하며, PIN은 입력하지 않습니다.</p><label class="field">첫 찬양대 이름<input name="choir" placeholder="예: 예루살렘 찬양대" maxlength="80" required></label><div class="toolbar"><button class="btn" type="submit">Workspace 만들기</button><button class="btn secondary" type="button" id="back">돌아가기</button></div></form></section>`;
 }
-async function task(fn){if(busy)return;busy=true;screen.querySelectorAll('button').forEach(b=>b.disabled=true);message.textContent='처리 중입니다…';try{await fn();}catch(e){message.textContent=e.name==='TimeoutError'?'연결이 지연되고 있습니다. 같은 화면에서 다시 시도해 주세요.':e.message;}finally{busy=false;screen.querySelectorAll('button').forEach(b=>b.disabled=b.dataset.unavailable==='true');}}
+async function task(fn){if(busy)return;busy=true;screen.querySelectorAll('button').forEach(b=>b.disabled=true);message.textContent='처리 중입니다…';try{await fn();}catch(e){message.textContent=e.name==='TimeoutError'?'연결이 지연되고 있습니다. 같은 화면에서 다시 시도해 주세요.':e.message;}finally{busy=false;if(message.textContent==='처리 중입니다…')message.textContent='';screen.querySelectorAll('button').forEach(b=>b.disabled=b.dataset.unavailable==='true');}}
  screen.addEventListener('submit',e=>{e.preventDefault();const form=new FormData(e.target);
  if(e.target.id==='invite-form')task(async()=>{const invitation=await request('/rest/v1/rpc/choiron_operator_invite',{p_name:form.get('name'),p_email:form.get('email')});const link=new URL('./join.html',location.href);link.hash='invite='+invitation.token;screen.querySelector('#invite-result').innerHTML=`<h3>초대 링크</h3><textarea id="invite-link" readonly aria-label="초대 링크">${esc(link.href)}</textarea><button class="btn secondary" id="copy-invite">링크 복사</button><p>${location.hostname==='127.0.0.1'||location.hostname==='localhost'?'현재는 이 PC에서만 열리는 시험 링크입니다. 외부 전달은 웹사이트 배포 후 생성해 주세요.':'초대한 담당자에게만 전달해 주세요.'}</p><p>링크는 이 화면에서만 확인할 수 있습니다. 분실하면 초대를 취소하고 다시 만들어 주세요.</p>`;message.textContent='초대를 만들었습니다.';});
  if(e.target.id==='login')task(async()=>{const session=await request('/auth/v1/token?grant_type=password',{email:form.get('email'),password:form.get('password')},'');accessToken=session.access_token;form.delete('password');e.target.elements.password.value='';await overview();});
