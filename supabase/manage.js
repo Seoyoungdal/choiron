@@ -1,4 +1,4 @@
-import {setAppIcon} from './pwa.js?v=1';
+import {setAppIcon} from './pwa.js?v=2';
 import {partField,bindParts} from './part-field.js?v=1';
 import {invitePanel} from './member-invites.js?v=2';
 import {esc,field,date,position} from './ui.js';

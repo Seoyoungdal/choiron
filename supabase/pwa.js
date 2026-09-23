@@ -21,5 +21,21 @@ export async function setAppIcon(logo){
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();pendingPrompt=e;});
 window.addEventListener('appinstalled',()=>{pendingPrompt=null;if(note())note().textContent='홈 화면에 앱을 추가했습니다.';});
 const install=document.querySelector('#install-app');
-if(install)install.addEventListener('click',async()=>{if(pendingPrompt){const prompt=pendingPrompt;pendingPrompt=null;await prompt.prompt();await prompt.userChoice;}else if(note())note().textContent=/iPhone|iPad|iPod/.test(navigator.userAgent)?'Safari의 공유 버튼 → 홈 화면에 추가를 선택해 주세요. 아이콘을 바꾼 뒤에는 기존 홈 화면 아이콘을 삭제하고 다시 추가해야 할 수 있습니다.':'브라우저 메뉴에서 앱 설치 또는 홈 화면에 추가를 선택해 주세요. 이미 설치한 아이콘은 삭제 후 다시 추가해야 바뀔 수 있습니다.';});
+const standalone=()=>matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+if(install)install.addEventListener('click',async()=>{
+ if(pendingPrompt&&!standalone()){const prompt=pendingPrompt;pendingPrompt=null;await prompt.prompt();await prompt.userChoice;return;}
+ const target=note();if(!target)return;target.replaceChildren();
+ const url=new URL(role==='admin'?'operator.html':'member.html',base);
+ const workspace=new URL(location.href).searchParams.get('workspace');
+ if(role==='member'&&/^[a-f0-9-]{36}$/i.test(workspace||''))url.searchParams.set('workspace',workspace);
+ const help=document.createElement('p');help.textContent=standalone()?'설치된 앱에서는 아래 주소를 복사해 Safari나 Chrome 주소창에 붙여 넣어 주세요.':'웹페이지를 연 뒤 브라우저 메뉴에서 앱 설치 또는 홈 화면에 추가를 선택해 주세요.';
+ const input=document.createElement('input');input.readOnly=true;input.value=url.href;input.setAttribute('aria-label','웹페이지 주소');input.style.width='100%';input.addEventListener('click',()=>input.select());
+ const toolbar=document.createElement('div');toolbar.className='toolbar';
+ const copy=document.createElement('button');copy.type='button';copy.className='btn secondary';copy.textContent='주소 복사';
+ const status=document.createElement('span');status.setAttribute('role','status');
+ copy.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(url.href);status.textContent='주소를 복사했습니다. 브라우저 주소창에 붙여 넣어 주세요.';}catch{input.focus();input.select();status.textContent='주소를 길게 눌러 복사해 주세요.';}});
+ const open=document.createElement('a');open.href=url.href;open.target='_blank';open.rel='noopener noreferrer';open.className='btn secondary';open.textContent='웹페이지 열기';
+ const tip=document.createElement('p');tip.textContent='웹페이지 열기가 앱 안에서 열리면 주소 복사를 이용해 주세요. iPhone에서는 Safari의 공유 → 홈 화면에 추가를 선택합니다.';
+ toolbar.append(copy,open);target.append(help,input,toolbar,status,tip);
+});
 registration.then(async()=>{const cached=await (await caches.open(cacheName)).match(new URL(`manifest-${role}.webmanifest`,base).href);if(cached){const m=await cached.json();refreshLinks(new URL(m.icons[0].src).searchParams.get('v')||'saved');}}).catch(e=>{if(note())note().textContent=e.message;});

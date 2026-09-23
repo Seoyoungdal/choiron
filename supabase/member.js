@@ -1,4 +1,4 @@
-import {setAppIcon} from './pwa.js?v=1';
+import {setAppIcon} from './pwa.js?v=2';
 import {invitePanel} from './member-invites.js?v=2';
 import {applyTheme} from './themes.js?v=2';
 import {supabaseConfig as config} from './supabase-config.js';

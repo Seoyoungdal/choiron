@@ -1,4 +1,4 @@
-import {setAppIcon} from './pwa.js?v=1';
+import {setAppIcon} from './pwa.js?v=2';
 import {themes,applyTheme,safeLogo} from './themes.js?v=2';
 import {esc} from './ui.js';
 import {photoData} from './member-utils.js';
