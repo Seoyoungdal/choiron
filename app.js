@@ -1,9 +1,13 @@
+import { Workspaces } from "./workspaces.js";
 import { API, apiBase } from "./api.js";
 import { config } from "./config.js";
 import { ics, googleCalendar, download } from "./calendar.js";
 import { reports } from "./reports.js";
 import { exportExcel, importExcel } from "./excel.js";
-const C = globalThis.ChoirCore, api = new API(), $ = (s) => document.querySelector(s), app = $("#app"), dialog = $("#dialog");
+let api = new API();
+const workspaces = new Workspaces(localStorage);
+let activeCode = "";
+const C = globalThis.ChoirCore, $ = (s) => document.querySelector(s), app = $("#app"), dialog = $("#dialog");
 const state = { page: "home", snapshot: null, data: {}, choir: "jer", month: (/* @__PURE__ */ new Date()).toISOString().slice(0, 7), calendar: /* @__PURE__ */ new Date(), query: "", wizard: 0 };
 const roleNames = { member: "단원", leader: "파트장", secretary: "서기", admin: "관리자" }, statusNames = { present: "출석", absent: "결석", excused: "인정결석", planned: "결석 예정", pending: "예정", cancelled: "취소" };
 const themes = { blue: ["ChoirON Blue", "#255bdd"], forest: ["Forest", "#18785d"], lavender: ["Lavender", "#7551c8"], warm: ["Warm", "#b14d2c"], dark: ["Dark", "#243653"] };
@@ -208,17 +212,33 @@ async function findWorkspace(code) {
   if (!result.ok) throw new Error(result.error);
   return result.data;
 }
-function connectDialog() {
-  const code = new URLSearchParams(location.search).get("workspace") || "";
-  modal("우리 Workspace에 로그인", field("Workspace 코드", "code", code, "text", "required") + field("단원 ID", "id", "", "text", 'required autocomplete="username"') + field("PIN", "pin", "", "password", 'required inputmode="numeric" autocomplete="current-password"') + '<p class="muted">관리자가 보내드린 코드와 개인 ID를 사용하세요.</p><div class="toolbar">' + btn("관리자 설정 이어가기", "setup-start", "", "soft") + btn("데모로 둘러보기", "demo") + "</div>", async (p) => {
+async function activateWorkspace(trial, code) {
+  // Read everything before replacing the active workspace, so failure is isolated.
+  const snapshot = await trial.request("snapshot"), nextData = {};
+  if (!snapshot.mustChange) for (const c of snapshot.choirs) nextData[c.id] = await trial.request("choirData", {choirId:c.id});
+  api = trial;
+  activeCode = code;
+  workspaces.remember(code, snapshot.workspace.name, trial);
+  Object.assign(state, {snapshot, data:nextData, choir:snapshot.choirs[0]?.id || "", page:"home", query:"", wizard:0});
+  window.history.replaceState(null, "", location.pathname + "?workspace=" + encodeURIComponent(code));
+  dialog.close();
+  render();
+  if (snapshot.mustChange) pinDialog(true);
+}
+function workspaceDialog() {
+  modal("내 Workspace", '<p class="muted">선택한 곳의 일정과 출석만 표시합니다. 앱을 닫거나 새로고침하면 다시 로그인해 주세요.</p>' +
+    workspaces.items.map(w => `<div class="upcoming"><div><h3>${esc(w.name)}</h3><p>${esc(w.code)} · ${!api.isDemo && activeCode === w.code ? "현재 사용 중" : workspaces.sessions.has(w.code) ? "로그인됨" : "로그인 필요"}</p></div>${btn("열기", "workspace-open", `data-code="${esc(w.code)}"`)}${activeCode !== w.code || api.isDemo ? btn("목록에서 삭제", "workspace-forget", `data-code="${esc(w.code)}"`, "small secondary") : ""}</div>`).join("") +
+    '<div class="toolbar">' + btn("+ Workspace 추가", "workspace-add") + btn("데모 둘러보기", "demo") + '</div>');
+}
+function connectDialog(code = "") {
+  if (typeof code !== "string") code = "";
+  code ||= new URLSearchParams(location.search).get("workspace") || "";
+  modal("우리 Workspace에 로그인", field("Workspace 코드", "code", code, "text", "required") + field("단원 ID", "id", "", "text", 'required autocomplete="username"') + field("PIN", "pin", "", "password", 'required inputmode="numeric" autocomplete="current-password"') + '<p class="muted">관리자가 보내드린 코드와 개인 ID를 사용하세요. PIN은 기기에 저장하지 않습니다.</p><div class="toolbar">' + btn("내 Workspace", "connect") + btn("관리자 설정 이어가기", "setup-start", "", "soft") + "</div>", async (p) => {
     const workspace = await findWorkspace(p.code), trial = new API();
     trial.connect(workspace.url);
     const result = await trial.request("login", { id: p.id, pin: p.pin });
-    api.connect(workspace.url);
-    api.token = result.token;
-    state.page = "home";
-    dialog.close();
-    await refresh();
+    trial.token = result.token;
+    await activateWorkspace(trial, workspace.url.split("/").pop());
   }, "로그인");
 }
 function setupStart() {
@@ -308,10 +328,22 @@ async function bulkImport(file) {
   }, "등록 실행");
 }
 const actions = {
-  connect: connectDialog,
+  connect: workspaceDialog,
+  "workspace-add": () => connectDialog(),
+  "workspace-open": async (el) => {
+    const code = el.dataset.code, session = workspaces.sessions.get(code);
+    if (!session) return connectDialog(code);
+    try { await activateWorkspace(session, code); }
+    catch (error) {
+      workspaces.logout(code);
+      connectDialog(code);
+      toast("해당 Workspace를 열지 못했습니다. 현재 Workspace는 유지됩니다. " + error.message);
+    }
+  },
+  "workspace-forget": (el) => { workspaces.forget(el.dataset.code); workspaceDialog(); },
   demo: async () => {
-    api.isDemo = true;
-    api.token = "";
+    api = new API();
+    activeCode = "";
     state.page = "home";
     dialog.close();
     await refresh();
@@ -348,6 +380,7 @@ const actions = {
   pin: () => pinDialog(),
   logout: async () => {
     await api.request("logout");
+    workspaces.logout(activeCode);
     api.token = "";
     state.snapshot = null;
     state.data = {};
@@ -506,9 +539,10 @@ async function startApp() {
   if (token && code) {
     window.history.replaceState(null, "", location.pathname + "?workspace=" + encodeURIComponent(code));
     const workspace = await findWorkspace(code);
-    api.connect(workspace.url);
-    api.token = token;
-    await refresh();
+    const trial = new API();
+    trial.connect(workspace.url);
+    trial.token = token;
+    await activateWorkspace(trial, workspace.url.split("/").pop());
   } else {
     await refresh();
     if (apiBase && new URLSearchParams(location.search).has("workspace")) connectDialog();
