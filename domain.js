@@ -6,6 +6,10 @@
   function requireValue(ok, message) {
     if (!ok) fail(message);
   }
+  function userId(value) {
+    requireValue(typeof value === "string" && /^[가-힣A-Za-z0-9_-]{1,64}$/.test(value), "로그인 ID는 한글·영문·숫자·밑줄·하이픈 1~64자이며 공백은 사용할 수 없습니다.");
+    return value;
+  }
   function id(value) {
     requireValue(typeof value === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(value), "ID는 영문·숫자·_- 1~64자입니다.");
     return value;
@@ -65,5 +69,5 @@
   function expected(session2, member, now) {
     return session2.status === "active" && Date.parse(session2.close) < now && Date.parse(session2.start) >= Date.parse(member.joinedAt || "1970-01-01") && (!member.endedAt || Date.parse(session2.start) <= Date.parse(member.endedAt));
   }
-  root.ChoirCore = { roles, fail, requireValue, id, text, pin, membership, userRoles, has, canRead, canCorrect, distance, location, attendanceGate, session, expected };
+  root.ChoirCore = { roles, fail, requireValue, id, userId, text, pin, membership, userRoles, has, canRead, canCorrect, distance, location, attendanceGate, session, expected };
 })(globalThis);

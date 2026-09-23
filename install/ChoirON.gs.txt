@@ -6,6 +6,10 @@
   function requireValue(ok, message) {
     if (!ok) fail(message);
   }
+  function userId(value) {
+    requireValue(typeof value === "string" && /^[가-힣A-Za-z0-9_-]{1,64}$/.test(value), "로그인 ID는 한글·영문·숫자·밑줄·하이픈 1~64자이며 공백은 사용할 수 없습니다.");
+    return value;
+  }
   function id(value) {
     requireValue(typeof value === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(value), "ID는 영문·숫자·_- 1~64자입니다.");
     return value;
@@ -65,7 +69,7 @@
   function expected(session2, member, now) {
     return session2.status === "active" && Date.parse(session2.close) < now && Date.parse(session2.start) >= Date.parse(member.joinedAt || "1970-01-01") && (!member.endedAt || Date.parse(session2.start) <= Date.parse(member.endedAt));
   }
-  root.ChoirCore = { roles, fail, requireValue, id, text, pin, membership, userRoles, has, canRead, canCorrect, distance, location, attendanceGate, session, expected };
+  root.ChoirCore = { roles, fail, requireValue, id, userId, text, pin, membership, userRoles, has, canRead, canCorrect, distance, location, attendanceGate, session, expected };
 })(globalThis);
 
 // Apps Script has no timers. Only synchronous bcrypt APIs are used.
@@ -1841,7 +1845,7 @@ function operatorReassign_(ctx, p) {
   var key = prop_().getProperty('OPERATOR_REASSIGN_KEY');
   ChoirCore.requireValue(key && /^[a-f0-9]{64}$/.test(key), '원격 관리자 재지정이 설정되지 않았습니다.');
   ChoirCore.requireValue(p.code === ctx.config.code && typeof p.timestamp === 'number' && Math.abs(Date.now()-p.timestamp) <= 60000 && /^[a-f0-9]{32}$/.test(p.nonce || ''), '유효하지 않은 관리자 재지정 요청입니다.');
-  var id = ChoirCore.id(p.userId), message = p.code+'\n'+id+'\n'+p.timestamp+'\n'+p.nonce;
+  var id = ChoirCore.userId(p.userId), message = p.code+'\n'+id+'\n'+p.timestamp+'\n'+p.nonce;
   var signature = Utilities.base64Encode(Utilities.computeHmacSha256Signature(message, key));
   ChoirCore.requireValue(equal_(signature, String(p.signature || '')), '유효하지 않은 관리자 재지정 요청입니다.');
   var used = JSON.parse(prop_().getProperty('OPERATOR_NONCES') || '[]').filter(function(n) { return Date.now()-n.at < 120000; });
@@ -1956,12 +1960,13 @@ function replace_(book, name, list) {
   }));
 }
 function put_(book, name, obj) {
-  var list = rows_(book, name), i = list.findIndex(function(r) {
-    return r.id === obj.id;
+  var sheet = book.getSheetByName(name), last = sheet.getLastRow();
+  var ids = last > 1 ? sheet.getRange(2, 1, last - 1, 1).getValues() : [];
+  var index = ids.findIndex(function(row) {
+    try { return JSON.parse(row[0]) === obj.id; } catch (_) { return row[0] === obj.id; }
   });
-  if (i < 0) list.push(obj);
-  else list[i] = obj;
-  replace_(book, name, list);
+  var values = SCHEMA[name].map(function(k) { return JSON.stringify(obj[k] === void 0 ? "" : obj[k]); });
+  sheet.getRange(index < 0 ? last + 1 : index + 2, 1, 1, values.length).setNumberFormat("@").setValues([values]);
   return obj;
 }
 function audit_(book, actor, action, target, before, after, reason) {
@@ -2190,7 +2195,7 @@ function saveConfig_(c) {
 function bootstrap_(p) {
   ChoirCore.requireValue(!prop_().getProperty("WORKSPACE") && equal_(hash_(String(p.key || "")), prop_().getProperty("BOOTSTRAP_HASH") || ""), "초기 설정 키가 잘못되었거나 이미 사용되었습니다.");
   ChoirCore.pin(p.pin);
-  ChoirCore.id(p.adminId);
+  ChoirCore.userId(p.adminId);
   ChoirCore.id(p.code);
   ChoirCore.text(p.name, 80);
   if (p.authSheetId) owned_(p.authSheetId);
@@ -2273,7 +2278,7 @@ function choirSave_(ctx, u, p) {
 function memberSave_(ctx, u, p) {
   var c = choir_(ctx, u, p.choirId, true);
   ChoirCore.requireValue(c.status === "active", "보관된 찬양대입니다.");
-  var id = ChoirCore.id(p.id), old = ctx.users.find(function(v) {
+  var id = ChoirCore.userId(p.id), old = ctx.users.find(function(v) {
     return v.id === id;
   }), roles = p.roles || ["member"];
   ChoirCore.requireValue(Array.isArray(roles) && roles.length > 0 && roles.every(function(r) {
@@ -2310,7 +2315,7 @@ function memberSave_(ctx, u, p) {
 function attend_(ctx, u, c, b, action, p) {
   var s = rows_(b, "Sessions").find(function(s2) {
     return s2.id === p.sessionId;
-  }), target = action === "correct" ? ChoirCore.id(p.userId) : u.id;
+  }), target = action === "correct" ? ChoirCore.userId(p.userId) : u.id;
   ChoirCore.requireValue(s && s.status === "active", "취소되었거나 없는 일정입니다.");
   var m = ctx.memberships.find(function(m2) {
     return m2.userId === target && m2.choirId === c.id;

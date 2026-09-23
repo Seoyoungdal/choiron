@@ -54,7 +54,14 @@ async function refresh() {
 }
 async function mutate(action, p) {
   await api.request(action, { choirId: state.choir, ...p });
-  await refresh();
+  try {
+    if (["sessionSave", "placeSave", "checkin", "absence", "correct"].includes(action)) {
+      state.data[state.choir] = await api.request("choirData", {choirId:state.choir});
+      render();
+    } else await refresh();
+  } catch (error) {
+    throw new Error("저장은 완료됐지만 화면을 다시 불러오지 못했습니다. 중복 등록하지 말고 새로고침해 주세요. " + error.message);
+  }
 }
 function nav() {
   const items = [["home", "⌂", "홈"], ["calendar", "▦", "일정"], ["history", "◷", "내 출결"], ["profile", "♙", "내 정보"]];
@@ -129,6 +136,8 @@ function modal(title2, body, onSubmit, submitLabel = "저장") {
     if (busy) return;
     busy = true;
     const form = e.currentTarget, values = Object.fromEntries(new FormData(form)), button = form.querySelector("[type=submit]");
+    const originalLabel = button.textContent;
+    button.textContent = "저장 중입니다… 잠시 기다려 주세요";
     button.disabled = true;
     $("#modalError").textContent = "";
     try {
@@ -139,6 +148,7 @@ function modal(title2, body, onSubmit, submitLabel = "저장") {
       if (error) error.textContent = err.message;
     } finally {
       busy = false;
+      button.textContent = originalLabel;
       button.disabled = false;
     }
   };
@@ -185,7 +195,8 @@ function placeDialog(id) {
 }
 function memberDialog(id) {
   const m = db().memberships.find((m2) => m2.userId === id && m2.choirId === state.choir), u = db().users.find((u2) => u2.id === id), rr = db().roles.filter((r) => r.userId === id && r.choirId === state.choir).map((r) => r.role);
-  modal(id ? "단원 정보 수정" : "단원 등록", `<div class="form-grid">${field("단원 ID", "id", id || "", "text", `required pattern="[A-Za-z0-9_-]{1,64}" ${id ? "readonly" : ""}`)}${field("이름", "name", u?.name || "", "text", "required")}${field("파트", "part", m?.part || "소프라노", "text", "required")}${select("활동 상태", "status", [["active", "활동"], ["paused", "휴단"], ["withdrawn", "탈퇴"]], m?.status || "active")}${field(id ? "PIN 재설정 (선택 · Workspace 관리자만)" : "초기 PIN", "pin", "", "password", `${id ? "" : "required"} pattern="[0-9]{6,12}" inputmode="numeric" autocomplete="new-password"`)}</div><p class="muted">기존 ID를 입력하면 같은 계정을 이 찬양대에도 등록합니다. 초기 PIN은 첫 로그인 시 변경합니다.</p><div class="roles">${Object.entries(roleNames).map(([r, n]) => `<label><input type="checkbox" name="roles" value="${r}" ${(rr.length ? rr : ["member"]).includes(r) ? "checked" : ""}>${n}</label>`).join("")}</div>`, async (p, form) => {
+  modal(id ? "단원 정보 수정" : "단원 등록", `<div class="form-grid">${field("단원 ID (한글 가능 · 예: 손정미)", "id", id || "", "text", `required maxlength="64" ${id ? "readonly" : ""}`)}${field("이름", "name", u?.name || "", "text", "required")}${field("파트", "part", m?.part || "소프라노", "text", "required")}${select("활동 상태", "status", [["active", "활동"], ["paused", "휴단"], ["withdrawn", "탈퇴"]], m?.status || "active")}${field(id ? "PIN 재설정 (선택 · Workspace 관리자만)" : "초기 PIN (숫자 6~12자리)", "pin", "", "password", `${id ? "" : "required"} pattern="[0-9]{6,12}" inputmode="numeric" autocomplete="new-password"`)}</div><p class="muted">기존 ID를 입력하면 같은 계정을 이 찬양대에도 등록합니다. 초기 PIN은 첫 로그인 시 변경합니다.</p><div class="roles">${Object.entries(roleNames).map(([r, n]) => `<label><input type="checkbox" name="roles" value="${r}" ${(rr.length ? rr : ["member"]).includes(r) ? "checked" : ""}>${n}</label>`).join("")}</div>`, async (p, form) => {
+    C.userId(p.id);
     p.roles = new FormData(form).getAll("roles");
     await mutate("memberSave", p);
     toast("단원을 저장했습니다.");
@@ -256,8 +267,9 @@ function setupStart() {
   }, "다음");
 }
 function setupAuth() {
-  modal("회원/Auth Sheet 연결 · 2/5", `${field("회원/Auth Spreadsheet ID (비우면 자동 생성)", "authSheetId")}${field("관리자 이름", "adminName", "", "text", "required")}${field("관리자 ID", "adminId", "", "text", 'required pattern="[A-Za-z0-9_-]{1,64}"')}${field("관리자 PIN", "pin", "", "password", 'required pattern="[0-9]{6,12}" inputmode="numeric" autocomplete="new-password"')}${field("관리자 PIN 확인", "confirm", "", "password", 'required inputmode="numeric" autocomplete="new-password"')}<p class="muted">배포한 Google 계정이 소유한 빈 Sheet를 사용합니다. 사진·백업 폴더도 같은 계정에 생성됩니다.</p>`, async (p) => {
+  modal("회원/Auth Sheet 연결 · 2/5", `${field("회원/Auth Spreadsheet ID (비우면 자동 생성)", "authSheetId")}${field("관리자 이름", "adminName", "", "text", "required")}${field("관리자 ID (한글 가능)", "adminId", "", "text", 'required maxlength="64"')}${field("관리자 PIN", "pin", "", "password", 'required pattern="[0-9]{6,12}" inputmode="numeric" autocomplete="new-password"')}${field("관리자 PIN 확인", "confirm", "", "password", 'required inputmode="numeric" autocomplete="new-password"')}<p class="muted">배포한 Google 계정이 소유한 빈 Sheet를 사용합니다. 사진·백업 폴더도 같은 계정에 생성됩니다.</p>`, async (p) => {
     if (p.pin !== p.confirm) throw new Error("PIN이 일치하지 않습니다.");
+    C.userId(p.adminId);
     const trial = new API(), code = state.setup.code;
     trial.connect(state.setup.url);
     await trial.request("bootstrap", { ...state.setup, ...p });
@@ -325,7 +337,7 @@ async function bulkImport(file) {
   const seen = /* @__PURE__ */ new Set();
   rows.forEach((r, i) => {
     try {
-      C.id(r.id);
+      C.userId(r.id);
       C.text(r.name);
       C.text(r.part);
       if (r.pin) C.pin(r.pin);
