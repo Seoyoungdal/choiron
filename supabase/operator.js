@@ -1,6 +1,6 @@
 import {appearance} from './appearance.js';
 import {applyTheme} from './themes.js';
-import {manage} from './manage.js?v=8';
+import {manage} from './manage.js?v=9';
 import {supabaseConfig as config} from './supabase-config.js';
 const screen=document.querySelector('#screen'),message=document.querySelector('#message');
 let accessToken='',busy=false,requestId='',myWorkspaces=[],isOperator=false,serviceWorkspaces=[];
