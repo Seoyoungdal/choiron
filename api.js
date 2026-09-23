@@ -1,6 +1,4 @@
 import { Demo } from "./demo.js";
-import { config } from "./config.js";
-export const apiBase = (config.apiBase || (location.pathname.startsWith("/portal/") ? location.origin : "")).replace(/\/$/, "");
 export class API {
   constructor() {
     this.demo = new Demo();
@@ -9,7 +7,7 @@ export class API {
     this.token = "";
   }
   connect(url) {
-    if (!apiBase || !url.startsWith(apiBase + "/api/workspace/") || !/^[A-Za-z0-9_-]{2,32}$/.test(url.slice((apiBase + "/api/workspace/").length))) throw new Error("서비스 운영자의 Workspace 연결 주소를 확인해 주세요.");
+    if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(url)) throw new Error("Apps Script /exec 배포 주소를 입력해 주세요.");
     this.url = url;
     this.isDemo = false;
     this.token = "";

@@ -1,5 +1,5 @@
 import { Workspaces } from "./workspaces.js";
-import { API, apiBase } from "./api.js";
+import { API } from "./api.js";
 import { config } from "./config.js";
 import { ics, googleCalendar, download } from "./calendar.js";
 import { reports } from "./reports.js";
@@ -7,6 +7,7 @@ import { exportExcel, importExcel } from "./excel.js";
 let api = new API();
 const workspaces = new Workspaces(localStorage);
 let activeCode = "";
+let busy = false;
 const C = globalThis.ChoirCore, $ = (s) => document.querySelector(s), app = $("#app"), dialog = $("#dialog");
 const state = { page: "home", snapshot: null, data: {}, choir: "jer", month: (/* @__PURE__ */ new Date()).toISOString().slice(0, 7), calendar: /* @__PURE__ */ new Date(), query: "", wizard: 0 };
 const roleNames = { member: "단원", leader: "파트장", secretary: "서기", admin: "관리자" }, statusNames = { present: "출석", absent: "결석", excused: "인정결석", planned: "결석 예정", pending: "예정", cancelled: "취소" };
@@ -66,7 +67,7 @@ function render() {
   if (!db()) return;
   document.documentElement.dataset.theme = db().workspace.theme;
   const brand = `<img src="./assets/icon.svg" alt=""><span>Choir<b>ON</b></span>`;
-  app.innerHTML = `<div class="demo-bar">${api.isDemo ? "체험 모드 · 가상 데이터로 자유롭게 둘러보세요." : "함께하는 찬양, 더 가까운 연결."}<button data-action="connect">${api.isDemo ? "내 Workspace 연결" : "Workspace 전환"}</button></div><aside class="sidebar"><div class="brand">${brand}</div><div class="workspace"><p>MY WORKSPACE</p><strong>${db().workspace.logo ? `<img src="${esc(db().workspace.logo)}" alt="Workspace 로고"> ` : ""}${esc(db().workspace.name)}</strong><select id="choirSelect" aria-label="찬양대 선택">${db().choirs.map((c) => `<option value="${esc(c.id)}" ${c.id === state.choir ? "selected" : ""}>${esc(c.name)}${c.status === "archived" ? " (보관)" : ""}</option>`).join("")}</select></div><nav aria-label="주 메뉴">${nav()}</nav><div class="side-bottom">${api.isDemo ? `체험할 역할<select id="persona" aria-label="데모 역할"><option value="kim" ${user().id === "kim" ? "selected" : ""}>김은혜 · 단원</option><option value="lee" ${user().id === "lee" ? "selected" : ""}>이영준 · 테너 파트장</option><option value="park" ${user().id === "park" ? "selected" : ""}>박서연 · 서기 + 파트장</option><option value="admin" ${user().id === "admin" ? "selected" : ""}>정하늘 · Workspace 관리자</option></select>` : "데이터는 Workspace에서 관리합니다."}<p><a href="./operator.html">Workspace 초대 관리 ↗</a></p><p>Powered by ChoirON · v2.0</p></div></aside><div class="layout"><header class="topbar"><span class="crumb">${esc(db().workspace.name)} <span aria-hidden="true">/</span> ${esc(current()?.name || "시작하기")}</span><div class="brand mobile-brand">${brand}</div><div class="profile-chip"><span class="online">● ${api.isDemo ? "DEMO" : navigator.onLine ? "연결됨" : "오프라인"}</span><span class="avatar">${esc(user().name.slice(-2))}</span>${esc(user().name)} 님</div></header><main id="main">${state.wizard ? `<div class="hint row"><span>ChoirON 시작하기 · ${state.wizard}/5</span>${btn("설정 계속", "wizard-resume", "", "soft")}</div>` : ""}${page()}</main></div>`;
+  app.innerHTML = `<div class="demo-bar">${api.isDemo ? "체험 모드 · 가상 데이터로 자유롭게 둘러보세요." : "함께하는 찬양, 더 가까운 연결."}<button data-action="connect">${api.isDemo ? "내 Workspace 연결" : "Workspace 전환"}</button></div><aside class="sidebar"><div class="brand">${brand}</div><div class="workspace"><p>MY WORKSPACE</p><strong>${db().workspace.logo ? `<img src="${esc(db().workspace.logo)}" alt="Workspace 로고"> ` : ""}${esc(db().workspace.name)}</strong><select id="choirSelect" aria-label="찬양대 선택">${db().choirs.map((c) => `<option value="${esc(c.id)}" ${c.id === state.choir ? "selected" : ""}>${esc(c.name)}${c.status === "archived" ? " (보관)" : ""}</option>`).join("")}</select></div><nav aria-label="주 메뉴">${nav()}</nav><div class="side-bottom">${api.isDemo ? `체험할 역할<select id="persona" aria-label="데모 역할"><option value="kim" ${user().id === "kim" ? "selected" : ""}>김은혜 · 단원</option><option value="lee" ${user().id === "lee" ? "selected" : ""}>이영준 · 테너 파트장</option><option value="park" ${user().id === "park" ? "selected" : ""}>박서연 · 서기 + 파트장</option><option value="admin" ${user().id === "admin" ? "selected" : ""}>정하늘 · Workspace 관리자</option></select>` : "데이터는 Workspace에서 관리합니다."}<p><a href="./operator.html">관리자에게 설정 안내 보내기 ↗</a></p><p>Powered by ChoirON · 무료 운영판</p></div></aside><div class="layout"><header class="topbar"><span class="crumb">${esc(db().workspace.name)} <span aria-hidden="true">/</span> ${esc(current()?.name || "시작하기")}</span><div class="brand mobile-brand">${brand}</div><div class="profile-chip"><span class="online">● ${api.isDemo ? "DEMO" : navigator.onLine ? "연결됨" : "오프라인"}</span><span class="avatar">${esc(user().name.slice(-2))}</span>${esc(user().name)} 님</div></header><main id="main">${state.wizard ? `<div class="hint row"><span>ChoirON 시작하기 · ${state.wizard}/5</span>${btn("설정 계속", "wizard-resume", "", "soft")}</div>` : ""}${page()}</main></div>`;
 }
 function page() {
   return ({ home, calendar, history, profile, manage, members, settings }[state.page] || home)();
@@ -99,7 +100,7 @@ function history() {
   return title("MY ATTENDANCE", "나의 출결", "함께한 시간을 월별·연간으로 돌아보세요.") + `<div class="toolbar"><input type="month" id="historyMonth" aria-label="조회 월" value="${state.month.length === 7 ? state.month : state.month + "-01"}">${btn("연간 보기", "year-view")}${btn("Excel 다운로드", "my-export")}<input id="historyQuery" placeholder="일정 검색" aria-label="일정 검색" value="${esc(state.query)}"></div><div class="stats"><div class="stat"><span>조회 기간</span><strong>${state.month}</strong></div><div class="stat"><span>출석</span><strong>${count}</strong></div><div class="stat"><span>결석</span><strong>${ss.filter((s) => status(s) === "absent").length}</strong></div><div class="stat"><span>인정결석</span><strong>${ss.filter((s) => status(s) === "excused").length}</strong></div></div><section class="card"><div class="table-wrap"><table><thead><tr><th>날짜</th><th>연습 일정</th><th>시간</th><th>출결</th></tr></thead><tbody>${ss.map((s) => `<tr><td>${fmt(s.start)}</td><td><button class="btn small secondary" data-action="event" data-id="${esc(s.id)}">${esc(s.title)}</button></td><td>${time(s.start)}</td><td>${badge(status(s))}</td></tr>`).join("")}</tbody></table>${!ss.length ? '<p class="empty">해당 기간의 일정이 없습니다.</p>' : ""}</div></section>`;
 }
 function profile() {
-  return title("MY PROFILE", "내 정보", "나의 소속과 계정 정보를 확인하세요.") + `<div class="settings-grid"><section class="card"><div class="row"><span class="avatar" style="width:80px;height:80px;font-size:25px">${esc(user().name.slice(-2))}</span><div><h2>${esc(user().name)}</h2><p class="muted">단원 ID · ${esc(user().id)}</p></div></div><div class="toolbar">${btn("프로필 사진 보기", "photo-view")}<label class="btn secondary file-label">사진 변경<input type="file" id="photoFile" accept="image/png,image/jpeg,image/webp"></label></div><p class="muted">사진은 Workspace 관리자 Drive에 저장됩니다.</p>${btn("PIN 변경", "pin")}${btn("로그아웃", "logout", "", "secondary")}</section><section class="card"><h2>나의 찬양대</h2>${db().memberships.filter((m) => m.userId === user().id).map((m) => `<div class="upcoming"><span class="avatar">♪</span><div><h3>${esc(db().choirs.find((c) => c.id === m.choirId)?.name || m.choirId)}</h3><p>${esc(m.part)} · ${db().roles.filter((r) => r.userId === user().id && r.choirId === m.choirId).map((r) => roleNames[r.role]).join(", ")}</p></div></div>`).join("")}${user().workspaceAdmin ? '<span class="badge">Workspace 관리자</span>' : ""}</section></div><section class="card"><h2>앱과 연결</h2>${select("현재 찬양대", "switchChoir", db().choirs.map((c) => [c.id, c.name]), state.choir)}<div class="toolbar">${btn("Workspace 연결", "connect")}${btn("앱 설치 안내", "install")}${api.isDemo ? select("체험할 역할", "mobilePersona", [["kim", "단원 · 김은혜"], ["lee", "파트장 · 이영준"], ["park", "서기 · 박서연"], ["admin", "관리자 · 정하늘"]], user().id) : ""}</div><p class="muted">앱은 인터넷 연결이 필요합니다. 오프라인 출석은 접수하지 않습니다.</p></section>`;
+  return title("MY PROFILE", "내 정보", "나의 소속과 계정 정보를 확인하세요.") + `<div class="settings-grid"><section class="card"><div class="row"><span class="avatar" style="width:80px;height:80px;font-size:25px">${esc(user().name.slice(-2))}</span><div><h2>${esc(user().name)}</h2><p class="muted">단원 ID · ${esc(user().id)}</p></div></div><div class="toolbar">${btn("프로필 사진 보기", "photo-view")}<label class="btn secondary file-label">사진 변경<input type="file" id="photoFile" accept="image/png,image/jpeg,image/webp"></label></div><p class="muted">사진은 Workspace 관리자 Drive에 저장됩니다.</p>${btn("PIN 변경", "pin")}${btn("로그아웃", "logout", "", "secondary")}</section><section class="card"><h2>나의 찬양대</h2>${db().memberships.filter((m) => m.userId === user().id).map((m) => `<div class="upcoming"><span class="avatar">♪</span><div><h3>${esc(db().choirs.find((c) => c.id === m.choirId)?.name || m.choirId)}</h3><p>${esc(m.part)} · ${db().roles.filter((r) => r.userId === user().id && r.choirId === m.choirId).map((r) => roleNames[r.role]).join(", ")}</p></div></div>`).join("")}${user().workspaceAdmin ? '<span class="badge">Workspace 관리자</span>' : ""}</section></div><section class="card"><h2>앱과 연결</h2>${select("현재 찬양대", "switchChoir", db().choirs.map((c) => [c.id, c.name]), state.choir)}<div class="toolbar">${btn("내 Workspace", "connect")}${btn("단원 연결 링크", "member-link")}${btn("앱 설치 안내", "install")}${api.isDemo ? select("체험할 역할", "mobilePersona", [["kim", "단원 · 김은혜"], ["lee", "파트장 · 이영준"], ["park", "서기 · 박서연"], ["admin", "관리자 · 정하늘"]], user().id) : ""}</div><p class="muted">앱은 인터넷 연결이 필요합니다. 오프라인 출석은 접수하지 않습니다.</p></section>`;
 }
 function manage() {
   if (!has(["leader", "secretary", "admin"])) return '<p class="empty">출결 관리 권한이 없습니다.</p>';
@@ -118,13 +119,15 @@ function members() {
 }
 function settings() {
   if (!admin() && !user().workspaceAdmin) return '<p class="empty">관리자 권한이 없습니다.</p>';
-  return title("WORKSPACE SETTINGS", "우리에게 맞는 공간", "찬양대의 운영 환경을 설정하세요.") + `<div class="settings-grid"><section class="card"><h2>찬양대 운영</h2><div class="toolbar">${btn("일정 추가", "session-new", "", "")}${btn("장소 추가", "place-new")}</div>${data().places.map((p) => `<div class="upcoming"><div><h3>${esc(p.name)}</h3><p>허용 반경 ${p.radius ?? "—"}m</p></div>${btn("수정", "place-edit", `data-id="${esc(p.id)}"`, "small secondary")}</div>`).join("")}<div class="toolbar">${btn("감사 기록", "audit")}${btn("리포트 다운로드", "report")}</div></section>${user().workspaceAdmin ? `<section class="card"><h2>Workspace 디자인</h2><p class="muted">테마를 눌러 미리 보고, 저장하면 모두에게 적용됩니다.</p><div class="themes">${Object.entries(themes).map(([id, [name, color]]) => `<button class="theme ${id === db().workspace.theme ? "selected" : ""}" data-action="theme" data-id="${id}"><span class="swatch" style="background:${color}"></span>${name}</button>`).join("")}</div><div class="toolbar">${btn("이름·로고·테마 저장", "workspace-edit", "", "")}</div></section><section class="card"><h2>찬양대와 데이터</h2>${db().choirs.map((c) => `<div class="upcoming"><div><h3>${esc(c.name)}</h3><p>${c.status === "active" ? "운영중" : "보관"}</p></div>${btn("연결 관리", "choir-edit", `data-id="${esc(c.id)}"`, "small secondary")}</div>`).join("")}<div class="toolbar">${btn("+ 찬양대 만들기", "choir-new")}${btn("연결 정보", "data-info")}</div></section><section class="card"><h2>백업과 관리자</h2><p class="muted">하루에 한 번 관리자 Drive로 자동 백업합니다.</p><div class="toolbar">${btn("지금 백업", "backup")}${btn("백업 복원", "backups")}${btn("관리자 이양", "transfer")}</div><p class="muted">복원 전 현재 데이터를 백업하며, 복원 후 모든 계정은 다시 로그인합니다.</p></section>` : ""}</div>`;
+  return title("WORKSPACE SETTINGS", "우리에게 맞는 공간", "찬양대의 운영 환경을 설정하세요.") + `<div class="settings-grid"><section class="card"><h2>찬양대 운영</h2><div class="toolbar">${btn("일정 추가", "session-new", "", "")}${btn("장소 추가", "place-new")}</div>${data().places.map((p) => `<div class="upcoming"><div><h3>${esc(p.name)}</h3><p>허용 반경 ${p.radius ?? "—"}m</p></div>${btn("수정", "place-edit", `data-id="${esc(p.id)}"`, "small secondary")}</div>`).join("")}<div class="toolbar">${btn("감사 기록", "audit")}${btn("리포트 다운로드", "report")}</div></section>${user().workspaceAdmin ? `<section class="card"><h2>Workspace 디자인</h2><p class="muted">테마를 눌러 미리 보고, 저장하면 모두에게 적용됩니다.</p><div class="themes">${Object.entries(themes).map(([id, [name, color]]) => `<button class="theme ${id === db().workspace.theme ? "selected" : ""}" data-action="theme" data-id="${id}"><span class="swatch" style="background:${color}"></span>${name}</button>`).join("")}</div><div class="toolbar">${btn("이름·로고·테마 저장", "workspace-edit", "", "")}</div></section><section class="card"><h2>찬양대와 데이터</h2>${db().choirs.map((c) => `<div class="upcoming"><div><h3>${esc(c.name)}</h3><p>${c.status === "active" ? "운영중" : "보관"}</p></div>${btn("연결 관리", "choir-edit", `data-id="${esc(c.id)}"`, "small secondary")}</div>`).join("")}<div class="toolbar">${btn("+ 찬양대 만들기", "choir-new")}${btn("연결 정보", "data-info")}</div></section><section class="card"><h2>백업과 관리자</h2><p class="muted">매일 오전 3시대에 관리자 Drive로 자동 백업합니다.</p><div class="toolbar">${btn("지금 백업", "backup")}${btn("백업 복원", "backups")}${btn("관리자 이양", "transfer")}</div><p class="muted">복원 전 현재 데이터를 백업하며, 복원 후 모든 계정은 다시 로그인합니다.</p></section>` : ""}</div>`;
 }
 function modal(title2, body, onSubmit, submitLabel = "저장") {
   dialog.innerHTML = `<div class="dialog-head"><h2 id="dialogTitle">${title2}</h2><button class="close" data-close aria-label="닫기">×</button></div>${onSubmit ? '<form id="modalForm">' : ""}${body}<p class="error" id="modalError" role="alert"></p>${onSubmit ? `<div class="actions"><button type="button" class="btn secondary" data-close>취소</button><button type="submit" class="btn">${submitLabel}</button></div></form>` : ""}`;
   if (!dialog.open) dialog.showModal();
   if (onSubmit) $("#modalForm").onsubmit = async (e) => {
     e.preventDefault();
+    if (busy) return;
+    busy = true;
     const form = e.currentTarget, values = Object.fromEntries(new FormData(form)), button = form.querySelector("[type=submit]");
     button.disabled = true;
     $("#modalError").textContent = "";
@@ -135,6 +138,7 @@ function modal(title2, body, onSubmit, submitLabel = "저장") {
       const error = $("#modalError");
       if (error) error.textContent = err.message;
     } finally {
+      busy = false;
       button.disabled = false;
     }
   };
@@ -194,55 +198,78 @@ function memberDialog(id) {
 }
 function choirDialog(id) {
   const c = db().choirs.find((c2) => c2.id === id);
-  modal(id ? "찬양대 설정" : "찬양대 만들기", field("찬양대 ID", "id", c?.id || uid(), "text", id ? "readonly required" : 'required pattern="[A-Za-z0-9_-]{1,64}"') + field("찬양대 이름", "name", c?.name || "", "text", "required") + select("운영 상태", "status", [["active", "운영중"], ["archived", "보관"]], c?.status || "active") + '<p class="muted">새 찬양대의 Google Sheet는 자동으로 만들어집니다.</p>', async (p) => {
+  modal(id ? "찬양대와 Sheet 연결" : "찬양대 만들기", `${field("찬양대 ID", "id", c?.id || uid(), "text", `required pattern="[A-Za-z0-9_-]{1,64}" ${id ? "readonly" : ""}`)}${field("찬양대 이름", "name", c?.name || "", "text", "required")}${field(id ? "변경할 Google Spreadsheet ID (비우면 유지)" : "Google Spreadsheet ID (비우면 자동 생성)", "sheetId")}${select("운영 상태", "status", [["active", "운영중"], ["archived", "보관"]], c?.status || "active")}${id ? select("Sheet 변경 방식", "mode", [["migrate", "기존 데이터 이전"], ["fresh", "새 데이터로 시작"]], "migrate") : ""}<p class="muted">관리자 소유의 빈 Sheet만 연결할 수 있습니다. 찬양대마다 별도 파일을 사용합니다.</p>`, async (p) => {
     await mutate("choirSave", p);
     state.choir = p.id;
-    render();
-    toast("찬양대를 저장했습니다.");
+    if (state.wizard === 3) {
+      state.wizard = 4;
+      dialog.close();
+      memberDialog();
+    } else {
+      render();
+      toast("찬양대를 저장했습니다.");
+    }
   });
 }
 function eventDialog(id, cid = state.choir) {
   const d = state.data[cid], s = d.sessions.find((s2) => s2.id === id), c = db().choirs.find((c2) => c2.id === cid), place = d.places.find((p) => p.id === s.placeId)?.name || "";
   modal(esc(s.title), `<span class="badge">${esc(c.name)}</span><p>${fmt(s.start)} · ${time(s.start)}–${time(s.end)}</p><p>${esc(place)}</p>${badge(status(s, user().id, d))}<div class="toolbar">${s.status === "active" ? `<a class="btn" href="${esc(googleCalendar(s, c, place))}" target="_blank" rel="noopener noreferrer">Google Calendar에 추가 ↗</a>` : ""}${btn("Apple / .ics 파일", "ics", `data-id="${esc(id)}" data-choir="${esc(cid)}"`)}</div><p class="muted">개별 일정의 사본을 추가합니다. 앱에서 일정이 변경되어도 이미 추가한 캘린더에는 자동 반영되지 않습니다.</p>${cid === state.choir && C.has(db(), user(), cid, ["admin"]) ? btn("일정 수정·취소", "session-edit", `data-id="${esc(id)}"`) : ""}${cid === state.choir && s.status === "active" ? btn("결석 예정 입력", "absence", `data-id="${esc(id)}"`) : ""}`);
 }
-async function findWorkspace(code) {
-  if (!apiBase) throw new Error("서비스 운영자의 연결 서버 설정이 필요합니다. 지금은 데모를 둘러보실 수 있습니다.");
-  const r = await fetch(apiBase + "/api/lookup?code=" + encodeURIComponent(code));
-  const result = await r.json();
-  if (!result.ok) throw new Error(result.error);
-  return result.data;
-}
 async function activateWorkspace(trial, code) {
   // Read everything before replacing the active workspace, so failure is isolated.
   const snapshot = await trial.request("snapshot"), nextData = {};
   if (!snapshot.mustChange) for (const c of snapshot.choirs) nextData[c.id] = await trial.request("choirData", {choirId:c.id});
+  if (snapshot.workspace.code !== code) throw new Error("Workspace 코드가 연결 주소와 일치하지 않습니다.");
   api = trial;
   activeCode = code;
   workspaces.remember(code, snapshot.workspace.name, trial);
   Object.assign(state, {snapshot, data:nextData, choir:snapshot.choirs[0]?.id || "", page:"home", query:"", wizard:0});
-  window.history.replaceState(null, "", location.pathname + "?workspace=" + encodeURIComponent(code));
+  window.history.replaceState(null, "", location.pathname);
   dialog.close();
   render();
   if (snapshot.mustChange) pinDialog(true);
 }
 function workspaceDialog() {
   modal("내 Workspace", '<p class="muted">선택한 곳의 일정과 출석만 표시합니다. 앱을 닫거나 새로고침하면 다시 로그인해 주세요.</p>' +
-    workspaces.items.map(w => `<div class="upcoming"><div><h3>${esc(w.name)}</h3><p>${esc(w.code)} · ${!api.isDemo && activeCode === w.code ? "현재 사용 중" : workspaces.sessions.has(w.code) ? "로그인됨" : "로그인 필요"}</p></div>${btn("열기", "workspace-open", `data-code="${esc(w.code)}"`)}${activeCode !== w.code || api.isDemo ? btn("목록에서 삭제", "workspace-forget", `data-code="${esc(w.code)}"`, "small secondary") : ""}</div>`).join("") +
-    '<div class="toolbar">' + btn("+ Workspace 추가", "workspace-add") + btn("데모 둘러보기", "demo") + '</div>');
+    workspaces.items.map(w => `<div class="upcoming"><div><h3>${esc(w.name)}</h3><p>${esc(w.code)} · ${!api.isDemo && api.url === w.url ? "현재 사용 중" : workspaces.sessions.has(w.url) ? "로그인됨" : "로그인 필요"}</p></div>${btn("열기", "workspace-open", `data-code="${esc(w.code)}" data-url="${esc(w.url)}"`)}${api.url !== w.url || api.isDemo ? btn("목록에서 삭제", "workspace-forget", `data-code="${esc(w.code)}" data-url="${esc(w.url)}"`, "small secondary") : ""}</div>`).join("") +
+    '<div class="toolbar">' + btn("+ Workspace 추가", "workspace-add") + btn("처음 관리자 설정", "setup-guide") + btn("데모 둘러보기", "demo") + '</div>');
 }
-function connectDialog(code = "") {
+function connectDialog(code = "", url = "") {
   if (typeof code !== "string") code = "";
   code ||= new URLSearchParams(location.search).get("workspace") || "";
-  modal("우리 Workspace에 로그인", field("Workspace 코드", "code", code, "text", "required") + field("단원 ID", "id", "", "text", 'required autocomplete="username"') + field("PIN", "pin", "", "password", 'required inputmode="numeric" autocomplete="current-password"') + '<p class="muted">관리자가 보내드린 코드와 개인 ID를 사용하세요. PIN은 기기에 저장하지 않습니다.</p><div class="toolbar">' + btn("내 Workspace", "connect") + btn("관리자 설정 이어가기", "setup-start", "", "soft") + "</div>", async (p) => {
-    const workspace = await findWorkspace(p.code), trial = new API();
-    trial.connect(workspace.url);
+  const endpoint = url || workspaces.items.find(w => w.code === code)?.url || new URLSearchParams(location.hash.slice(1)).get("endpoint") || "";
+  modal("우리 Workspace에 로그인", field("Workspace 코드", "code", code, "text", "required") + field("연결 주소 (관리자가 보내준 Apps Script URL)", "url", endpoint, "url", "required") + field("단원 ID", "id", "", "text", 'required autocomplete="username"') + field("PIN", "pin", "", "password", 'required inputmode="numeric" autocomplete="current-password"') + '<p class="muted">관리자가 보내드린 코드와 개인 ID를 사용하세요. PIN은 기기에 저장하지 않습니다.</p><div class="toolbar">' + btn("내 Workspace", "connect") + btn("관리자 설정 이어가기", "setup-start", "", "soft") + "</div>", async (p) => {
+    const trial = new API();
+    trial.connect(p.url.trim());
     const result = await trial.request("login", { id: p.id, pin: p.pin });
     trial.token = result.token;
-    await activateWorkspace(trial, workspace.url.split("/").pop());
+    await activateWorkspace(trial, p.code.trim());
   }, "로그인");
 }
 function setupStart() {
-  location.href = apiBase ? apiBase + "/portal/start.html" : "./start.html?demo=1";
+  state.setup = {};
+  state.wizard = 1;
+  modal("ChoirON 시작하기 · 1/5", `<div class="stepper">${[1, 2, 3, 4, 5].map((x) => `<span class="${x === 1 ? "done" : ""}"></span>`).join("")}</div><p class="muted">관리자 Google 계정에 Apps Script를 먼저 배포해 주세요. 아직 배포 전이라면 <a href="./start.html">처음 설정 안내</a>를 열어 주세요.</p>${field("Workspace 이름", "name", "", "text", "required")}${field("Workspace 코드", "code", "", "text", 'required pattern="[A-Za-z0-9_-]{1,64}"')}${field("Apps Script 배포 URL", "url", "", "url", "required")}${field("일회용 초기 설정 키", "key", "", "password", 'required autocomplete="off"')}`, async (p) => {
+    state.setup = p;
+    state.wizard = 2;
+    setupAuth();
+  }, "다음");
+}
+function setupAuth() {
+  modal("회원/Auth Sheet 연결 · 2/5", `${field("회원/Auth Spreadsheet ID (비우면 자동 생성)", "authSheetId")}${field("관리자 이름", "adminName", "", "text", "required")}${field("관리자 ID", "adminId", "", "text", 'required pattern="[A-Za-z0-9_-]{1,64}"')}${field("관리자 PIN", "pin", "", "password", 'required pattern="[0-9]{6,12}" inputmode="numeric" autocomplete="new-password"')}${field("관리자 PIN 확인", "confirm", "", "password", 'required inputmode="numeric" autocomplete="new-password"')}<p class="muted">배포한 Google 계정이 소유한 빈 Sheet를 사용합니다. 사진·백업 폴더도 같은 계정에 생성됩니다.</p>`, async (p) => {
+    if (p.pin !== p.confirm) throw new Error("PIN이 일치하지 않습니다.");
+    const trial = new API(), code = state.setup.code;
+    trial.connect(state.setup.url);
+    await trial.request("bootstrap", { ...state.setup, ...p });
+    const result = await trial.request("login", { id: p.adminId, pin: p.pin });
+    trial.token = result.token;
+    await activateWorkspace(trial, code);
+    state.setup = null;
+    state.wizard = 3;
+    await refresh();
+    dialog.close();
+    choirDialog();
+  }, "초기화하고 다음");
 }
 async function locate() {
   return new Promise((resolve, reject) => {
@@ -331,19 +358,26 @@ const actions = {
   connect: workspaceDialog,
   "workspace-add": () => connectDialog(),
   "workspace-open": async (el) => {
-    const code = el.dataset.code, session = workspaces.sessions.get(code);
-    if (!session) return connectDialog(code);
+    const code = el.dataset.code, url = el.dataset.url, session = workspaces.sessions.get(url);
+    if (!session) return connectDialog(code, url);
     try { await activateWorkspace(session, code); }
     catch (error) {
-      workspaces.logout(code);
-      connectDialog(code);
+      workspaces.logout(url);
+      connectDialog(code, url);
       toast("해당 Workspace를 열지 못했습니다. 현재 Workspace는 유지됩니다. " + error.message);
     }
   },
-  "workspace-forget": (el) => { workspaces.forget(el.dataset.code); workspaceDialog(); },
+  "workspace-forget": (el) => { workspaces.forget(el.dataset.url); workspaceDialog(); },
+  "setup-guide": () => { location.href = "./start.html"; },
+  "member-link": () => {
+    if (api.isDemo) throw new Error("실제 Workspace에 로그인한 뒤 공유할 수 있습니다.");
+    const link = new URL("./", location.href); link.hash = new URLSearchParams({workspace:activeCode,endpoint:api.url});
+    modal("단원에게 보내는 연결 링크", `<p>단원은 이 링크에서 개인 ID와 PIN으로 로그인합니다.</p><textarea readonly rows="5">${esc(link.href)}</textarea><p class="muted">연결 주소만 포함합니다. PIN과 초기 설정 키는 포함하지 않습니다.</p>`);
+  },
   demo: async () => {
     api = new API();
     activeCode = "";
+    window.history.replaceState(null, "", location.pathname);
     state.page = "home";
     dialog.close();
     await refresh();
@@ -380,7 +414,7 @@ const actions = {
   pin: () => pinDialog(),
   logout: async () => {
     await api.request("logout");
-    workspaces.logout(activeCode);
+    workspaces.logout(api.url);
     api.token = "";
     state.snapshot = null;
     state.data = {};
@@ -453,6 +487,7 @@ const actions = {
   install: () => modal("홈 화면에 ChoirON 추가", `<p>Android Chrome: 브라우저 메뉴 → 앱 설치 또는 홈 화면에 추가</p><p>iPhone Safari: 공유 → 홈 화면에 추가</p><p>PC Chrome / Edge: 주소 표시줄의 설치 아이콘을 선택해 주세요.</p><p class="muted">출석에는 인터넷 연결과 위치 권한이 필요합니다.</p>`)
 };
 document.addEventListener("click", async (e) => {
+  if (busy) { e.preventDefault(); return; }
   const close = e.target.closest("[data-close]");
   if (close) {
     dialog.close();
@@ -470,15 +505,19 @@ document.addEventListener("click", async (e) => {
   const fn = actions[el.dataset.action];
   if (!fn) return;
   el.disabled = true;
+  busy = true;
   try {
     await fn(el);
   } catch (error) {
     toast(error.message);
   } finally {
+    busy = false;
     el.disabled = false;
   }
 });
 document.addEventListener("change", async (e) => {
+  if (busy) { if (db()) render(); return; }
+  busy = true;
   const el = e.target;
   try {
     if (el.id === "choirSelect" || el.name === "switchChoir") {
@@ -521,7 +560,7 @@ document.addEventListener("change", async (e) => {
     }
   } catch (error) {
     toast(error.message);
-  }
+  } finally { busy = false; }
 });
 window.addEventListener("online", () => {
   toast("인터넷에 연결되었습니다.");
@@ -531,23 +570,13 @@ window.addEventListener("offline", () => {
   toast("오프라인입니다. 출석은 인터넷 연결 후 가능합니다.");
   if (db()) render();
 });
+dialog.addEventListener("cancel", e => { if (busy) e.preventDefault(); });
 if ("serviceWorker" in navigator && location.protocol !== "file:") navigator.serviceWorker.register("./sw.js").catch(() => {
 });
-async function startApp() {
-  const fragment = new URLSearchParams(location.hash.slice(1));
-  const token = fragment.get("token"), code = fragment.get("workspace");
-  if (token && code) {
-    window.history.replaceState(null, "", location.pathname + "?workspace=" + encodeURIComponent(code));
-    const workspace = await findWorkspace(code);
-    const trial = new API();
-    trial.connect(workspace.url);
-    trial.token = token;
-    await activateWorkspace(trial, workspace.url.split("/").pop());
-  } else {
-    await refresh();
-    if (apiBase && new URLSearchParams(location.search).has("workspace")) connectDialog();
-  }
-}
-startApp().catch((e) => {
-  app.innerHTML = '<p class="loading">' + esc(e.message) + "</p>";
+refresh().then(() => {
+  const params = new URLSearchParams(location.hash.slice(1));
+  if (params.has("endpoint")) connectDialog(params.get("workspace") || "");
+  else if (new URLSearchParams(location.search).has("setup")) setupStart();
+}).catch((e) => {
+  app.innerHTML = `<p class="loading">${esc(e.message)}</p>`;
 });

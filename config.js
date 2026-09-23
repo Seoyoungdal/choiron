@@ -1,1 +1,1 @@
-export const config = { apiBase: "", registryUrl: "", workspaces: [] };
+export const config = { registryUrl: "", workspaces: [] };

@@ -1,4 +1,4 @@
-const CACHE = "choiron-shell-2.1.0";
+const CACHE = "choiron-shell-free-3.0.0";
 const FILES = ["./", "./index.html", "./styles.css", "./app.js", "./api.js", "./workspaces.js", "./demo.js", "./domain.js", "./calendar.js", "./reports.js", "./excel.js", "./config.js", "./manifest.webmanifest", "./assets/icon.svg", "./assets/icon-192.png", "./assets/icon-512.png", "./vendor/exceljs.min.js"];
 self.addEventListener("install", (e) => e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES))));
 self.addEventListener("activate", (e) => e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k.startsWith("choiron-shell-") && k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())));

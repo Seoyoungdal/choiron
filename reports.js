@@ -3,7 +3,7 @@ export const reports = [{ id: "attendance", name: "단원별 출결 요약", col
   return memberships.map((m) => {
     const ss = sessions.filter((s) => {
       const local = new Date(s.start);
-      const key = local.getFullYear() + "-" + String(local.getMonth() + 1).padStart(2, "0");
+      const key = local.getFullYear() + '-' + String(local.getMonth() + 1).padStart(2, '0');
       return key.slice(0, period.length) === period && globalThis.ChoirCore.expected(s, m, Date.now());
     });
     let present = 0, excused = 0;
