@@ -1,7 +1,9 @@
+import {setAppIcon} from './pwa.js?v=1';
 import {partField,bindParts} from './part-field.js?v=1';
 import {invitePanel} from './member-invites.js?v=2';
 import {esc,field,date,position} from './ui.js';
 export async function manage({root,rpc,workspace,back}){
+ setAppIcon(workspace.logo).catch(()=>{});
  bindParts(root);
  let choir=workspace.choirs[0]?.id,data,working=false;
  if(!choir)throw Error('등록된 찬양대가 없습니다.');
