@@ -11,9 +11,14 @@ async function request(path,body,token=accessToken) {
  const response=await fetch(config.url+path,{method:'POST',headers,body:JSON.stringify(body),signal:AbortSignal.timeout(20000)});
  const raw=await response.text();let result;try{result=raw?JSON.parse(raw):null;}catch{throw Error('서버 응답을 확인할 수 없습니다.');}
  if(!response.ok){
-  if(result?.code==='PGRST202')throw Error('추가 설정 006_invites_themes.sql을 먼저 적용해 주세요.');
+  const code=result?.error_code||result?.code||result?.error;
+  const detail=result?.message||result?.msg||result?.error_description||'';
+  if(code==='invalid_credentials'||detail==='Invalid login credentials')throw Error('이메일 또는 비밀번호가 일치하지 않습니다. 브라우저 자동 입력 대신 관리자 비밀번호를 직접 입력해 주세요. 단원 PIN과는 다릅니다.');
+  if(code==='email_not_confirmed')throw Error('이 계정은 이전 이메일 인증 방식에서 대기 중입니다. 운영자에게 계정 상태 확인을 요청해 주세요.');
+  if(response.status===429)throw Error('로그인 시도가 많아 잠시 제한되었습니다. 잠시 후 다시 시도해 주세요.');
+  if(code==='PGRST202')throw Error('서버 기능 설정이 필요합니다. 최종 SQL 008이 적용됐는지 확인해 주세요.');
   if(response.status===401)throw Error('이메일·비밀번호를 확인해 주세요. 로그인 시간이 만료됐다면 새로고침 후 다시 로그인해 주세요.');
-  throw Error(result?.message||'요청을 처리하지 못했습니다.');
+  throw Error(detail||`요청을 처리하지 못했습니다. (HTTP ${response.status}, ${code||'unknown'})`);
  }
  return result;
 }
