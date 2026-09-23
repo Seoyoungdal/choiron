@@ -1,0 +1,12 @@
+import {supabaseConfig as config} from './supabase-config.js';
+const form=document.querySelector('#reset'),notice=document.querySelector('#notice'),account=document.querySelector('#account'),back=document.querySelector('#return');
+let params=new URLSearchParams(location.hash.slice(1));let token=params.get('access_token');const recovery=params.get('type')==='recovery';
+// Remove credentials before any requests; never persist or log the URL fragment.
+history.replaceState(null,'',location.pathname);params=null;
+back.href=location.port==='3000'?'http://127.0.0.1:4176/operator.html':new URL('./operator.html',location.href).href;
+let busy=false;
+const expired='재설정 링크가 만료됐거나 유효하지 않습니다. Supabase 사용자 화면에서 재설정 메일을 다시 요청해 주세요.';
+async function auth(method,body){const response=await fetch(config.url+'/auth/v1/user',{method,headers:{apikey:config.publishableKey,Authorization:'Bearer '+token,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(20000)});let data={};try{data=await response.json();}catch{}if(!response.ok){if(response.status===401||response.status===403)throw Error(expired);if(data.code==='same_password')throw Error('기존과 다른 비밀번호를 입력해 주세요.');if(data.code==='weak_password')throw Error('더 긴 비밀번호에 영문·숫자·기호를 함께 사용해 주세요.');if(data.code==='reauthentication_needed')throw Error('인증 시간이 지났습니다. 새 재설정 메일을 요청해 주세요.');throw Error('변경하지 못했습니다. 잠시 후 다시 시도하거나 새 재설정 메일을 요청해 주세요.');}return data;}
+async function init(){if(!token||!recovery){token='';notice.textContent='메일의 비밀번호 재설정 링크로 접속해 주세요. 이 화면을 새로고침했다면 새 재설정 메일이 필요합니다.';return;}try{const user=await auth('GET');account.textContent=user.email||'';notice.textContent='본인이 사용할 새 비밀번호를 입력해 주세요.';form.hidden=false;}catch(e){token='';notice.textContent=e.name==='TimeoutError'?'연결 시간이 초과됐습니다. 새 재설정 메일로 다시 시도해 주세요.':e.message;}}
+form.addEventListener('submit',async e=>{e.preventDefault();if(busy)return;const password=form.elements.password.value;if(password!==form.elements.confirm.value){notice.textContent='두 비밀번호가 일치하지 않습니다.';return;}busy=true;form.querySelector('button').disabled=true;notice.textContent='저장 중입니다…';try{await auth('PUT',{password});form.reset();form.hidden=true;token='';notice.textContent='비밀번호를 변경했습니다. 새 비밀번호로 관리자 화면에 로그인해 주세요.';back.hidden=false;}catch(e){notice.textContent=e.name==='TimeoutError'?'응답을 확인하지 못했습니다. 관리자 화면에서 새 비밀번호로 로그인해 보세요.':e.message;}finally{busy=false;form.querySelector('button').disabled=false;}});
+init();
